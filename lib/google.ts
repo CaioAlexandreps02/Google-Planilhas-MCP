@@ -1,13 +1,18 @@
 import { google } from "googleapis";
+import { getGoogleRefreshToken } from "./kv";
 
-export function getSheetsClient() {
+export async function getSheetsClient() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
-  if (!clientId || !clientSecret || !refreshToken) {
+  if (!clientId || !clientSecret) {
+    throw new Error("Faltam variáveis de ambiente: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET");
+  }
+
+  const refreshToken = (await getGoogleRefreshToken()) ?? process.env.GOOGLE_REFRESH_TOKEN;
+  if (!refreshToken) {
     throw new Error(
-      "Faltam variáveis de ambiente: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN"
+      "Nenhuma conta Google autorizada ainda. Conecte pelo fluxo OAuth do conector, ou acesse /api/auth/start."
     );
   }
 

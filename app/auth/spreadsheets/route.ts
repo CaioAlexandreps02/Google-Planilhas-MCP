@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOAuthClient } from "@/lib/google-oauth";
+import { saveGoogleRefreshToken } from "@/lib/kv";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -27,13 +28,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    await saveGoogleRefreshToken(tokens.refresh_token);
+
     const html = `
       <html>
         <body style="font-family: sans-serif; padding: 40px; max-width: 700px;">
           <h2>Autorizado com sucesso ✅</h2>
-          <p>Copie o valor abaixo e coloque na variável de ambiente <code>GOOGLE_REFRESH_TOKEN</code> na Vercel:</p>
-          <textarea readonly style="width: 100%; height: 80px; font-family: monospace; padding: 8px;">${tokens.refresh_token}</textarea>
-          <p style="color: #666; font-size: 14px;">Guarde com segurança — quem tiver esse valor consegue acessar suas planilhas. Depois de salvar, pode fechar esta página.</p>
+          <p>A conta foi conectada e já está pronta pra uso — não precisa fazer mais nada.</p>
+          <p style="color: #666; font-size: 14px;">Pode fechar esta página.</p>
         </body>
       </html>
     `;

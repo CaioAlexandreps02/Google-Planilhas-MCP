@@ -11,7 +11,7 @@ const baseHandler = createMcpHandler((server) => {
       range: z.string().describe("Intervalo no formato A1, ex: 'Agosto!A1:F30'"),
     },
     async ({ spreadsheetId, range }) => {
-      const sheets = getSheetsClient();
+      const sheets = await getSheetsClient();
       const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
       return {
         content: [{ type: "text", text: JSON.stringify(res.data.values ?? []) }],
@@ -30,7 +30,7 @@ const baseHandler = createMcpHandler((server) => {
         .describe("Matriz de linhas x colunas com os valores a escrever"),
     },
     async ({ spreadsheetId, range, values }) => {
-      const sheets = getSheetsClient();
+      const sheets = await getSheetsClient();
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range,
@@ -49,7 +49,7 @@ const baseHandler = createMcpHandler((server) => {
       requests: z.array(z.any()).describe("Array de objetos 'request' no formato da Sheets API batchUpdate"),
     },
     async ({ spreadsheetId, requests }) => {
-      const sheets = getSheetsClient();
+      const sheets = await getSheetsClient();
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: { requests },
@@ -74,9 +74,13 @@ function checkToken(req: Request): boolean {
 
 async function handler(req: Request) {
   if (!checkToken(req)) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
+    const origin = new URL(req.url).origin;
+    return new Response(JSON.stringify({ error: "invalid_token" }), {
       status: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "WWW-Authenticate": `Bearer error="invalid_token", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+      },
     });
   }
   return baseHandler(req);
