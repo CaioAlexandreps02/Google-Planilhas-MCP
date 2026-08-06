@@ -1,8 +1,8 @@
-import { createMcpHandler } from "@vercel/mcp-adapter";
+import { createMcpHandler, experimental_withMcpAuth as withMcpAuth } from "@vercel/mcp-adapter";
 import { z } from "zod";
 import { getSheetsClient } from "@/lib/google";
 
-const handler = createMcpHandler((server) => {
+const baseHandler = createMcpHandler((server) => {
   server.tool(
     "sheets_get_range",
     "Lê os valores de um intervalo de células de uma planilha do Google Sheets",
@@ -58,5 +58,11 @@ const handler = createMcpHandler((server) => {
     }
   );
 }, {}, { basePath: "/api" });
+
+const handler = withMcpAuth(baseHandler, (_req, bearerToken) => {
+  const expected = process.env.MCP_SHARED_SECRET;
+  if (!expected || bearerToken !== expected) return undefined;
+  return { token: bearerToken, clientId: "personal", scopes: [] };
+}, { required: true });
 
 export { handler as GET, handler as POST, handler as DELETE };
