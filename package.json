@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "get-refresh-token": "tsx scripts/get-refresh-token.ts"
+    "start": "next start"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
