@@ -57,12 +57,17 @@ const baseHandler = createMcpHandler((server) => {
       return { content: [{ type: "text", text: `${requests.length} operação(ões) aplicada(s).` }] };
     }
   );
-}, {}, { basePath: "/api" });
+});
 
-const handler = withMcpAuth(baseHandler, (_req, bearerToken) => {
+const handler = withMcpAuth(baseHandler, (req, bearerToken) => {
   const expected = process.env.MCP_SHARED_SECRET;
-  if (!expected || bearerToken !== expected) return undefined;
-  return { token: bearerToken, clientId: "personal", scopes: [] };
+  if (!expected) return undefined;
+
+  const tokenFromQuery = new URL(req.url).searchParams.get("token");
+  const token = bearerToken ?? tokenFromQuery ?? undefined;
+
+  if (token !== expected) return undefined;
+  return { token, clientId: "personal", scopes: [] };
 }, { required: true });
 
 export { handler as GET, handler as POST, handler as DELETE };
