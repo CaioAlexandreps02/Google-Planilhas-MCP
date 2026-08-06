@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     exp: Date.now() + 10 * 60 * 1000,
   });
 
-  const googleRedirectUri = new URL("/oauth/google/callback", req.nextUrl.origin).toString();
+  const googleRedirectUri = new URL("/auth/spreadsheets", req.nextUrl.origin).toString();
   const oauth2Client = getOAuthClient(googleRedirectUri);
 
   const authUrl = oauth2Client.generateAuthUrl({
