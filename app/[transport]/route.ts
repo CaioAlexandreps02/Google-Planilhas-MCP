@@ -1,4 +1,4 @@
-import { createMcpHandler, experimental_withMcpAuth as withMcpAuth } from "@vercel/mcp-adapter";
+import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 import { getSheetsClient } from "@/lib/google";
 
@@ -59,15 +59,27 @@ const baseHandler = createMcpHandler((server) => {
   );
 });
 
-const handler = withMcpAuth(baseHandler, (req, bearerToken) => {
+function checkToken(req: Request): boolean {
   const expected = process.env.MCP_SHARED_SECRET;
-  if (!expected) return undefined;
+  if (!expected) return false;
 
-  const tokenFromQuery = new URL(req.url).searchParams.get("token");
-  const token = bearerToken ?? tokenFromQuery ?? undefined;
+  const url = new URL(req.url);
+  const authHeader = req.headers.get("authorization");
+  const bearerToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+  const tokenFromQuery = url.searchParams.get("token") ?? undefined;
+  const token = bearerToken || tokenFromQuery;
 
-  if (token !== expected) return undefined;
-  return { token, clientId: "personal", scopes: [] };
-}, { required: true });
+  return token === expected;
+}
+
+async function handler(req: Request) {
+  if (!checkToken(req)) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return baseHandler(req);
+}
 
 export { handler as GET, handler as POST, handler as DELETE };
