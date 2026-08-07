@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOAuthClient } from "@/lib/google-oauth";
+import { getOAuthClient, OAUTH_SCOPES } from "@/lib/google-oauth";
 
 export async function GET(req: NextRequest) {
   const redirectUri = new URL("/auth/spreadsheets", req.nextUrl.origin).toString();
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: ["https://www.googleapis.com/auth/spreadsheets"],
+    scope: OAUTH_SCOPES,
   });
 
   return NextResponse.redirect(authUrl);

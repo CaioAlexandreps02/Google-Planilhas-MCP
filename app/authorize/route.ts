@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOAuthClient } from "@/lib/google-oauth";
+import { getOAuthClient, OAUTH_SCOPES } from "@/lib/google-oauth";
 import { encodeSignedPayload } from "@/lib/oauth-tokens";
 
 // Ponto de entrada do fluxo: o cliente MCP (Claude, etc.) manda o
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: ["https://www.googleapis.com/auth/spreadsheets"],
+    scope: OAUTH_SCOPES,
     state: googleState,
   });
 

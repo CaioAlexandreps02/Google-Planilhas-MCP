@@ -1,6 +1,7 @@
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 import { getSheetsClient } from "@/lib/google";
+import { getScriptClient } from "@/lib/google-script";
 
 const baseHandler = createMcpHandler((server) => {
   server.tool(
@@ -55,6 +56,46 @@ const baseHandler = createMcpHandler((server) => {
         requestBody: { requests },
       });
       return { content: [{ type: "text", text: `${requests.length} operação(ões) aplicada(s).` }] };
+    }
+  );
+
+  server.tool(
+    "apps_script_get_content",
+    "Lê o código-fonte atual de um projeto do Google Apps Script (todos os arquivos .gs/.html).",
+    {
+      scriptId: z.string().describe("ID do script (Configurações do projeto no editor do Apps Script)"),
+    },
+    async ({ scriptId }) => {
+      const script = await getScriptClient();
+      const res = await script.projects.getContent({ scriptId });
+      return {
+        content: [{ type: "text", text: JSON.stringify(res.data.files ?? []) }],
+      };
+    }
+  );
+
+  server.tool(
+    "apps_script_update_content",
+    "Substitui o código-fonte completo de um projeto do Google Apps Script. Precisa mandar TODOS os arquivos do projeto (não só o que mudou), no formato [{name, type, source}].",
+    {
+      scriptId: z.string(),
+      files: z
+        .array(
+          z.object({
+            name: z.string().describe("Nome do arquivo, sem extensão (ex: 'Código' ou 'Sidebar')"),
+            type: z.enum(["SERVER_JS", "HTML", "JSON"]).describe("SERVER_JS para .gs, HTML para .html, JSON para o appsscript.json"),
+            source: z.string().describe("Conteúdo completo do arquivo"),
+          })
+        )
+        .describe("Lista de todos os arquivos do projeto"),
+    },
+    async ({ scriptId, files }) => {
+      const script = await getScriptClient();
+      await script.projects.updateContent({
+        scriptId,
+        requestBody: { files },
+      });
+      return { content: [{ type: "text", text: `Projeto ${scriptId} atualizado com ${files.length} arquivo(s).` }] };
     }
   );
 });
