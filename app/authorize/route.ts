@@ -12,13 +12,12 @@ export async function GET(req: NextRequest) {
   const codeChallenge = sp.get("code_challenge") ?? "";
   const codeChallengeMethod = sp.get("code_challenge_method") ?? "plain";
 
-  // Se o cliente não mandou redirect_uri, usa o nosso callback padrão.
-  // Isso resolve o caso do ChatGPT que pode não enviar o parâmetro.
-  const finalRedirectUri = redirectUri
-    ?? new URL("/auth/spreadsheets", req.nextUrl.origin).toString();
+  if (!redirectUri) {
+    return new NextResponse("Parâmetro redirect_uri é obrigatório.", { status: 400 });
+  }
 
   const googleState = encodeSignedPayload({
-    redirectUri: finalRedirectUri,
+    redirectUri,
     state,
     codeChallenge,
     codeChallengeMethod,
