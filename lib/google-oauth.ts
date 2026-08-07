@@ -4,6 +4,7 @@ export const OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/script.projects",
   "https://www.googleapis.com/auth/script.deployments",
+  "https://www.googleapis.com/auth/script.scriptapp",
 ];
 
 export function getOAuthClient(redirectUri: string) {
