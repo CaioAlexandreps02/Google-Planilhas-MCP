@@ -61,6 +61,21 @@ const baseHandler = createMcpHandler((server) => {
   );
 
   server.tool(
+    "drive_get_file_meta",
+    "Debug: retorna id, name, mimeType e parents de um arquivo do Drive pelo ID.",
+    { fileId: z.string() },
+    async ({ fileId }) => {
+      const drive = await getDriveClient();
+      const res = await drive.files.get({
+        fileId,
+        fields: "id,name,mimeType,parents",
+        supportsAllDrives: true,
+      });
+      return { content: [{ type: "text", text: JSON.stringify(res.data) }] };
+    }
+  );
+
+  server.tool(
     "find_bound_script",
     "Encontra o ID do projeto de Apps Script vinculado a uma planilha (ou outro arquivo do Drive), sem precisar abrir o editor manualmente.",
     {
