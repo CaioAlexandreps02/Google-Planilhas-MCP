@@ -3,7 +3,6 @@ import { google } from "googleapis";
 export const OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/script.projects",
-  "https://www.googleapis.com/auth/drive.metadata.readonly",
 ];
 
 export function getOAuthClient(redirectUri: string) {

@@ -2,7 +2,6 @@ import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 import { getSheetsClient } from "@/lib/google";
 import { getScriptClient } from "@/lib/google-script";
-import { getDriveClient } from "@/lib/google-drive";
 
 const baseHandler = createMcpHandler((server) => {
   server.tool(
@@ -57,41 +56,6 @@ const baseHandler = createMcpHandler((server) => {
         requestBody: { requests },
       });
       return { content: [{ type: "text", text: `${requests.length} operação(ões) aplicada(s).` }] };
-    }
-  );
-
-  server.tool(
-    "drive_get_file_meta",
-    "Debug: retorna id, name, mimeType e parents de um arquivo do Drive pelo ID.",
-    { fileId: z.string() },
-    async ({ fileId }) => {
-      const drive = await getDriveClient();
-      const res = await drive.files.get({
-        fileId,
-        fields: "id,name,mimeType,parents",
-        supportsAllDrives: true,
-      });
-      return { content: [{ type: "text", text: JSON.stringify(res.data) }] };
-    }
-  );
-
-  server.tool(
-    "find_bound_script",
-    "Encontra o ID do projeto de Apps Script vinculado a uma planilha (ou outro arquivo do Drive), sem precisar abrir o editor manualmente.",
-    {
-      spreadsheetId: z.string().describe("ID da planilha (ou de qualquer arquivo do Drive) a verificar"),
-    },
-    async ({ spreadsheetId }) => {
-      const drive = await getDriveClient();
-      const res = await drive.files.list({
-        q: `'${spreadsheetId}' in parents and mimeType='application/vnd.google-apps.script' and trashed=false`,
-        fields: "files(id, name)",
-      });
-      const files = res.data.files ?? [];
-      if (files.length === 0) {
-        return { content: [{ type: "text", text: "Nenhum script vinculado encontrado nesse arquivo." }] };
-      }
-      return { content: [{ type: "text", text: JSON.stringify(files) }] };
     }
   );
 

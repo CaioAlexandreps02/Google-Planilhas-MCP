@@ -1,64 +1,88 @@
 # sheets-mcp
 
-Servidor MCP pessoal para o Google Sheets. Expõe 3 ferramentas que o Claude pode chamar
-diretamente por HTTP, sem precisar de navegador:
+Servidor MCP pessoal para Google Sheets + Apps Script. Publicado na Vercel, conecta em
+qualquer cliente MCP (Claude, ChatGPT, etc.) via OAuth de verdade — a pessoa clica
+"conectar", vai pra tela do Google, autoriza, e volta já funcionando.
 
-- `sheets_get_range` — lê um intervalo de células.
-- `sheets_update_range` — escreve valores em um intervalo.
-- `sheets_batch_update` — aplica operações avançadas (bordas, cores, validação de dados,
-  formatação condicional) usando o formato bruto do `batchUpdate` da API do Google.
+**URL do conector:** `https://google-planilhas-mcp.vercel.app/mcp`
 
-## Como funciona
+## Ferramentas disponíveis
 
-1. As credenciais (Client ID/Secret + refresh token de uma conta Google com acesso à
-   planilha) ficam em variáveis de ambiente — nada fica no código.
-2. `lib/google.ts` monta um cliente autenticado da Sheets API v4 usando essas variáveis.
-3. `app/api/mcp/route.ts` expõe esse cliente como ferramentas MCP via `@vercel/mcp-adapter`.
-4. Uma vez publicado na Vercel, o endpoint fica em `https://<seu-projeto>.vercel.app/api/mcp`
-   — essa URL é o que se registra como um "remote MCP server" no Claude.
+| Ferramenta | O que faz |
+|---|---|
+| `sheets_get_range` | Lê um intervalo de células (`Aba!A1:F30`) |
+| `sheets_update_range` | Escreve valores num intervalo |
+| `sheets_batch_update` | Formatação avançada (bordas, cores, validação de dados) via `batchUpdate` bruto da API |
+| `apps_script_get_content` | Lê o código-fonte de um projeto de Apps Script |
+| `apps_script_update_content` | Substitui o código-fonte completo de um projeto (manda TODOS os arquivos, não só o alterado) |
 
-## Passo a passo para deixar funcionando de verdade
+## ⚠️ Sobre o Apps Script: não tem como descobrir o ID sozinho
 
-### 1. Criar credenciais OAuth no Google Cloud
+As ferramentas `apps_script_*` pedem um `scriptId`. **Não existe forma automática de
+descobrir esse ID a partir do ID da planilha.** Já tentamos (via Drive API, listando
+"filhos" do arquivo da planilha) e não funciona — scripts vinculados (container-bound)
+não aparecem nessa relação de parentesco pela API do Drive, mesmo com o escopo certo.
 
-1. Acesse https://console.cloud.google.com/, crie (ou reaproveite) um projeto.
-2. Ative a **Google Sheets API**.
-3. Em "Credenciais" → "Criar credenciais" → "ID do cliente OAuth" → tipo **Aplicativo para computador**.
-4. Copie o **Client ID** e o **Client Secret**.
+**Isso significa que, sempre que alguém (ou a IA de alguém) for mexer num Apps Script
+vinculado a uma planilha pela primeira vez, precisa pegar o ID manualmente:**
 
-### 2. Gerar o refresh token (uma vez só, localmente)
+1. Abrir a planilha no Google Sheets.
+2. Menu **Extensões → Apps Script**.
+3. Ícone de engrenagem ⚙️ (**Configurações do projeto**).
+4. Copiar o **"ID do script"**.
 
-```bash
-GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=yyy npm run get-refresh-token
-```
+Depois de pegar o ID uma vez, **guarde-o** (na conversa, num arquivo local, onde fizer
+sentido) — ele não muda, então só precisa fazer isso uma vez por projeto de script.
 
-Isso abre um link — logue com a conta Google que tem acesso à planilha "Promoção", autorize,
-cole o código que o Google mostrar, e o script imprime o `refresh_token`.
+### Scripts já conhecidos
 
-### 3. Configurar variáveis de ambiente
+| Planilha | Spreadsheet ID | Script vinculado | Script ID |
+|---|---|---|---|
+| Promoção (Kits Embrepoli) | `1lple9VAYyoo4qUou0iZxrA-tHfWqKKCuuDgZLqOmUHo` | Auto-preenchimento Kits | `1Bqxp79hvX9jHteNxLynDLJjyOfMtdLqGXLj630DoXAvqbtDOh7bhGdnf` |
 
-Copie `.env.example` para `.env.local` e preencha os três valores (para rodar localmente),
-e depois configure as mesmas três variáveis nas "Environment Variables" do projeto na Vercel
-(para produção): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`.
+Ao conectar um Apps Script novo (de outra planilha), adicione uma linha nessa tabela.
 
-### 4. Rodar localmente
+## Como funciona (arquitetura)
 
-```bash
-npm run dev
-```
+- **Autenticação do conector:** servidor OAuth 2.1 próprio (`/authorize`, `/token`,
+  `/register`, `/.well-known/oauth-authorization-server`), que por baixo dos panos
+  redireciona pro login de verdade do Google. Depois que o Google autoriza, a gente
+  guarda o `refresh_token` da conta Google no **Vercel KV** e emite um token de acesso
+  MCP (que é só o `MCP_SHARED_SECRET`) pro cliente.
+- Também dá pra conectar sem OAuth interativo, direto com o token na URL:
+  `https://google-planilhas-mcp.vercel.app/mcp?token=SEU_MCP_SHARED_SECRET`
+- `lib/google.ts`, `lib/google-script.ts` — montam clientes autenticados (Sheets API v4 e
+  Apps Script API v1) usando o refresh token guardado no KV.
+- `app/[transport]/route.ts` — expõe tudo isso como ferramentas MCP via `@vercel/mcp-adapter`.
 
-O endpoint MCP fica em `http://localhost:3000/api/mcp`.
+## Variáveis de ambiente (Vercel)
 
-### 5. Publicar na Vercel
+| Variável | De onde vem |
+|---|---|
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Credenciais OAuth do Google Cloud (tipo "Aplicativo da Web") |
+| `MCP_SHARED_SECRET` | Você define (string aleatória longa) — protege o `/mcp` e assina os codes internos do fluxo OAuth |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` (etc.) | Auto-preenchidas ao conectar a integração Vercel KV |
 
-Conectar este projeto a um repositório no GitHub e importar na Vercel (ou `vercel deploy`
-direto pela CLI). Depois de publicado, a URL `https://<projeto>.vercel.app/api/mcp` é o
-endereço que se adiciona como conector MCP remoto no Claude.
+## APIs que precisam estar ativadas no Google Cloud
 
-## Limitações desta versão (MVP pessoal)
+- Google Sheets API
+- Google Apps Script API
 
-- Não cobre Apps Script (scripts `onEdit`, sidebars) — só edita células/formatação via
-  Sheets API. Continuaria precisando do navegador para essa parte.
-- Sem multiusuário: um único refresh token, de uma única conta Google, fixo nas env vars.
-  Se quiser abrir para outras pessoas usarem depois, aí entra banco de dados (ex: Supabase)
-  para guardar um refresh token por pessoa, e um fluxo OAuth próprio no MCP.
+## Escopos OAuth necessários (Tela de permissão OAuth)
+
+- `.../auth/spreadsheets`
+- `.../auth/script.projects`
+
+## Redirect URI cadastrada nas credenciais OAuth
+
+`https://google-planilhas-mcp.vercel.app/auth/spreadsheets` — usada tanto pelo fluxo
+manual antigo (`/api/auth/start`) quanto pelo fluxo OAuth novo (`/authorize`). Se
+precisar trocar de domínio, atualize essa URI nas credenciais do Google Cloud também.
+
+## Limitações atuais
+
+- Sem multiusuário: um único refresh token (uma única conta Google) fica guardado no KV.
+  Pra abrir pra outras pessoas usarem, cada uma precisaria de um token separado — o
+  design atual não separa isso.
+- `apps_script_update_content` substitui **todos** os arquivos do projeto de uma vez;
+  não dá pra editar um arquivo isolado sem mandar os outros junto.
