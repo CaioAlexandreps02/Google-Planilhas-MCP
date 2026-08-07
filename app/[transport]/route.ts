@@ -112,6 +112,31 @@ const baseHandler = createMcpHandler((server) => {
       return { content: [{ type: "text", text: `Projeto ${scriptId} atualizado com ${files.length} arquivo(s).` }] };
     }
   );
+
+  server.tool(
+    "apps_script_run",
+    "Executa uma função remotamente num projeto do Google Apps Script (o projeto precisa estar vinculado a um projeto do Google Cloud, não o padrão automático).",
+    {
+      scriptId: z.string(),
+      functionName: z.string().describe("Nome da função a executar, ex: 'configurarListasSuspensas'"),
+      parameters: z.array(z.any()).optional().describe("Parâmetros posicionais da função, se ela exigir"),
+    },
+    async ({ scriptId, functionName, parameters }) => {
+      const script = await getScriptClient();
+      const res = await script.scripts.run({
+        scriptId,
+        requestBody: {
+          function: functionName,
+          parameters: parameters ?? [],
+          devMode: true,
+        },
+      });
+      if (res.data.error) {
+        return { content: [{ type: "text", text: `Erro na execução: ${JSON.stringify(res.data.error)}` }] };
+      }
+      return { content: [{ type: "text", text: JSON.stringify(res.data.response ?? { ok: true }) }] };
+    }
+  );
 });
 
 function checkToken(req: Request): boolean {
