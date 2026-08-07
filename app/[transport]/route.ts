@@ -60,6 +60,20 @@ const baseHandler = createMcpHandler((server) => {
   );
 
   server.tool(
+    "sheets_get_metadata",
+    "Lista as abas de uma planilha com nome, sheetId (gid) e dimensões — útil pra montar requests de batch_update que exigem sheetId numérico.",
+    { spreadsheetId: z.string() },
+    async ({ spreadsheetId }) => {
+      const sheets = await getSheetsClient();
+      const res = await sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: "sheets.properties",
+      });
+      return { content: [{ type: "text", text: JSON.stringify(res.data.sheets ?? []) }] };
+    }
+  );
+
+  server.tool(
     "apps_script_get_content",
     "Lê o código-fonte atual de um projeto do Google Apps Script (todos os arquivos .gs/.html).",
     {
