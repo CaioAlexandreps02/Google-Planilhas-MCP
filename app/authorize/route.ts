@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOAuthClient, OAUTH_SCOPES } from "@/lib/google-oauth";
 import { encodeSignedPayload } from "@/lib/oauth-tokens";
 
-// Ponto de entrada do fluxo: o cliente MCP (Claude, etc.) manda o
+// Ponto de entrada do fluxo: o cliente MCP (Claude, ChatGPT, etc.) manda o
 // usuário pra cá. A gente "embrulha" o pedido dele num state assinado
 // e manda o usuário pra tela de verdade do Google.
 export async function GET(req: NextRequest) {
