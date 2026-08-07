@@ -137,6 +137,36 @@ const baseHandler = createMcpHandler((server) => {
       return { content: [{ type: "text", text: JSON.stringify(res.data.response ?? { ok: true }) }] };
     }
   );
+
+  server.tool(
+    "apps_script_ensure_api_executable",
+    "Cria uma versão + implantação do tipo 'Executável de API' pro projeto, caso ainda não exista. Necessário uma vez por projeto antes de usar apps_script_run.",
+    { scriptId: z.string() },
+    async ({ scriptId }) => {
+      const script = await getScriptClient();
+      const version = await script.projects.versions.create({
+        scriptId,
+        requestBody: { description: "Deploy automático via MCP" },
+      });
+      const versionNumber = version.data.versionNumber;
+      const deployment = await script.projects.deployments.create({
+        scriptId,
+        requestBody: {
+          versionNumber,
+          manifestFileName: "appsscript",
+          description: "API Executable via MCP",
+        },
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Versão ${versionNumber} criada e implantada. deploymentId: ${deployment.data.deploymentId}`,
+          },
+        ],
+      };
+    }
+  );
 });
 
 function checkToken(req: Request): boolean {
