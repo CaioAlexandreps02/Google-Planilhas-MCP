@@ -1,7 +1,25 @@
+export const maxDuration = 300;
+
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 import { getSheetsClient } from "@/lib/google";
 import { getScriptClient } from "@/lib/google-script";
+
+// Wrapper seguro: qualquer tool que lançar exceção retorna
+// um texto de erro amigável em vez de crashar a conexão MCP.
+function safe<P>(fn: (p: P) => Promise<{ content: { type: "text"; text: string }[] }>) {
+  return async (p: P) => {
+    try {
+      return await fn(p);
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      console.error("[MCP_TOOL_ERROR]", msg);
+      return {
+        content: [{ type: "text" as const, text: `Erro: ${msg}` }],
+      };
+    }
+  };
+}
 
 const baseHandler = createMcpHandler((server) => {
   server.tool(
@@ -11,13 +29,13 @@ const baseHandler = createMcpHandler((server) => {
       spreadsheetId: z.string().describe("ID da planilha (parte da URL entre /d/ e /edit)"),
       range: z.string().describe("Intervalo no formato A1, ex: 'Agosto!A1:F30'"),
     },
-    async ({ spreadsheetId, range }) => {
+    safe(async ({ spreadsheetId, range }) => {
       const sheets = await getSheetsClient();
       const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
       return {
         content: [{ type: "text", text: JSON.stringify(res.data.values ?? []) }],
       };
-    }
+    })
   );
 
   server.tool(
@@ -30,7 +48,7 @@ const baseHandler = createMcpHandler((server) => {
         .array(z.array(z.union([z.string(), z.number()])))
         .describe("Matriz de linhas x colunas com os valores a escrever"),
     },
-    async ({ spreadsheetId, range, values }) => {
+    safe(async ({ spreadsheetId, range, values }) => {
       const sheets = await getSheetsClient();
       await sheets.spreadsheets.values.update({
         spreadsheetId,
@@ -39,58 +57,58 @@ const baseHandler = createMcpHandler((server) => {
         requestBody: { values },
       });
       return { content: [{ type: "text", text: `Intervalo ${range} atualizado.` }] };
-    }
+    })
   );
 
   server.tool(
     "sheets_batch_update",
-    "Executa operações avançadas (formatação, bordas, validação de dados, formatação condicional) via batchUpdate da Sheets API. Aceita o array 'requests' bruto no formato da API oficial do Google.",
+    "Executa operações avançadas (formatação, bordas, validação de dados, formatação condicional) via batchUpdate da Sheets API.",
     {
       spreadsheetId: z.string(),
       requests: z.array(z.any()).describe("Array de objetos 'request' no formato da Sheets API batchUpdate"),
     },
-    async ({ spreadsheetId, requests }) => {
+    safe(async ({ spreadsheetId, requests }) => {
       const sheets = await getSheetsClient();
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: { requests },
       });
       return { content: [{ type: "text", text: `${requests.length} operação(ões) aplicada(s).` }] };
-    }
+    })
   );
 
   server.tool(
     "sheets_get_metadata",
-    "Lista as abas de uma planilha com nome, sheetId (gid) e dimensões — útil pra montar requests de batch_update que exigem sheetId numérico.",
+    "Lista as abas de uma planilha com nome, sheetId (gid) e dimensões.",
     { spreadsheetId: z.string() },
-    async ({ spreadsheetId }) => {
+    safe(async ({ spreadsheetId }) => {
       const sheets = await getSheetsClient();
       const res = await sheets.spreadsheets.get({
         spreadsheetId,
         fields: "sheets.properties",
       });
       return { content: [{ type: "text", text: JSON.stringify(res.data.sheets ?? []) }] };
-    }
+    })
   );
 
   server.tool(
     "apps_script_get_content",
-    "Lê o código-fonte atual de um projeto do Google Apps Script (todos os arquivos .gs/.html).",
+    "Lê o código-fonte atual de um projeto do Google Apps Script.",
     {
       scriptId: z.string().describe("ID do script (Configurações do projeto no editor do Apps Script)"),
     },
-    async ({ scriptId }) => {
+    safe(async ({ scriptId }) => {
       const script = await getScriptClient();
       const res = await script.projects.getContent({ scriptId });
       return {
         content: [{ type: "text", text: JSON.stringify(res.data.files ?? []) }],
       };
-    }
+    })
   );
 
   server.tool(
     "apps_script_update_content",
-    "Substitui o código-fonte completo de um projeto do Google Apps Script. Precisa mandar TODOS os arquivos do projeto (não só o que mudou), no formato [{name, type, source}].",
+    "Substitui o código-fonte completo de um projeto do Google Apps Script.",
     {
       scriptId: z.string(),
       files: z
@@ -103,25 +121,25 @@ const baseHandler = createMcpHandler((server) => {
         )
         .describe("Lista de todos os arquivos do projeto"),
     },
-    async ({ scriptId, files }) => {
+    safe(async ({ scriptId, files }) => {
       const script = await getScriptClient();
       await script.projects.updateContent({
         scriptId,
         requestBody: { files },
       });
       return { content: [{ type: "text", text: `Projeto ${scriptId} atualizado com ${files.length} arquivo(s).` }] };
-    }
+    })
   );
 
   server.tool(
     "apps_script_run",
-    "Executa uma função remotamente num projeto do Google Apps Script (o projeto precisa estar vinculado a um projeto do Google Cloud, não o padrão automático).",
+    "Executa uma função remotamente num projeto do Google Apps Script.",
     {
       scriptId: z.string(),
       functionName: z.string().describe("Nome da função a executar, ex: 'configurarListasSuspensas'"),
       parameters: z.array(z.any()).optional().describe("Parâmetros posicionais da função, se ela exigir"),
     },
-    async ({ scriptId, functionName, parameters }) => {
+    safe(async ({ scriptId, functionName, parameters }) => {
       const script = await getScriptClient();
       const res = await script.scripts.run({
         scriptId,
@@ -135,14 +153,14 @@ const baseHandler = createMcpHandler((server) => {
         return { content: [{ type: "text", text: `Erro na execução: ${JSON.stringify(res.data.error)}` }] };
       }
       return { content: [{ type: "text", text: JSON.stringify(res.data.response ?? { ok: true }) }] };
-    }
+    })
   );
 
   server.tool(
     "apps_script_ensure_api_executable",
-    "Cria uma versão + implantação do tipo 'Executável de API' pro projeto, caso ainda não exista. Necessário uma vez por projeto antes de usar apps_script_run.",
+    "Cria uma versão + implantação do tipo 'Executável de API' pro projeto.",
     { scriptId: z.string() },
-    async ({ scriptId }) => {
+    safe(async ({ scriptId }) => {
       const script = await getScriptClient();
       const version = await script.projects.versions.create({
         scriptId,
@@ -165,7 +183,7 @@ const baseHandler = createMcpHandler((server) => {
           },
         ],
       };
-    }
+    })
   );
 });
 
