@@ -21,6 +21,23 @@ function safe<P>(fn: (p: P) => Promise<{ content: { type: "text"; text: string }
   };
 }
 
+// Corta a espera antes da Vercel matar a função sem avisar (o que derruba
+// a conexão MCP inteira). Assim, se demorar demais, vira um erro normal.
+// Importante: isso só desiste de ESPERAR a resposta - não cancela a operação
+// do lado do Google, que pode continuar rodando e terminar depois mesmo assim.
+function comTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} demorou mais de ${ms / 1000}s e foi cancelado.`)), ms)
+    ),
+  ]);
+}
+
+const TIMEOUT_SHEETS_MS = 25000;
+const TIMEOUT_SCRIPT_META_MS = 45000;
+const TIMEOUT_SCRIPT_RUN_MS = 50000;
+
 const baseHandler = createMcpHandler((server) => {
   server.tool(
     "sheets_get_range",
@@ -31,7 +48,11 @@ const baseHandler = createMcpHandler((server) => {
     },
     safe(async ({ spreadsheetId, range }) => {
       const sheets = await getSheetsClient();
-      const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+      const res = await comTimeout(
+        sheets.spreadsheets.values.get({ spreadsheetId, range }),
+        TIMEOUT_SHEETS_MS,
+        "A leitura do intervalo"
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(res.data.values ?? []) }],
       };
@@ -50,12 +71,16 @@ const baseHandler = createMcpHandler((server) => {
     },
     safe(async ({ spreadsheetId, range, values }) => {
       const sheets = await getSheetsClient();
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range,
-        valueInputOption: "USER_ENTERED",
-        requestBody: { values },
-      });
+      await comTimeout(
+        sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range,
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values },
+        }),
+        TIMEOUT_SHEETS_MS,
+        "A escrita no intervalo"
+      );
       return { content: [{ type: "text", text: `Intervalo ${range} atualizado.` }] };
     })
   );
@@ -69,10 +94,14 @@ const baseHandler = createMcpHandler((server) => {
     },
     safe(async ({ spreadsheetId, requests }) => {
       const sheets = await getSheetsClient();
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: { requests },
-      });
+      await comTimeout(
+        sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: { requests },
+        }),
+        TIMEOUT_SHEETS_MS,
+        "O batchUpdate"
+      );
       return { content: [{ type: "text", text: `${requests.length} operação(ões) aplicada(s).` }] };
     })
   );
@@ -83,10 +112,14 @@ const baseHandler = createMcpHandler((server) => {
     { spreadsheetId: z.string() },
     safe(async ({ spreadsheetId }) => {
       const sheets = await getSheetsClient();
-      const res = await sheets.spreadsheets.get({
-        spreadsheetId,
-        fields: "sheets.properties",
-      });
+      const res = await comTimeout(
+        sheets.spreadsheets.get({
+          spreadsheetId,
+          fields: "sheets.properties",
+        }),
+        TIMEOUT_SHEETS_MS,
+        "A leitura dos metadados"
+      );
       return { content: [{ type: "text", text: JSON.stringify(res.data.sheets ?? []) }] };
     })
   );
@@ -99,7 +132,7 @@ const baseHandler = createMcpHandler((server) => {
     },
     safe(async ({ scriptId }) => {
       const script = await getScriptClient();
-      const res = await script.projects.getContent({ scriptId });
+      const res = await comTimeout(script.projects.getContent({ scriptId }), TIMEOUT_SCRIPT_META_MS, "A leitura do script");
       return {
         content: [{ type: "text", text: JSON.stringify(res.data.files ?? []) }],
       };
@@ -123,10 +156,14 @@ const baseHandler = createMcpHandler((server) => {
     },
     safe(async ({ scriptId, files }) => {
       const script = await getScriptClient();
-      await script.projects.updateContent({
-        scriptId,
-        requestBody: { files },
-      });
+      await comTimeout(
+        script.projects.updateContent({
+          scriptId,
+          requestBody: { files },
+        }),
+        TIMEOUT_SCRIPT_META_MS,
+        "A atualização do script"
+      );
       return { content: [{ type: "text", text: `Projeto ${scriptId} atualizado com ${files.length} arquivo(s).` }] };
     })
   );
@@ -141,14 +178,18 @@ const baseHandler = createMcpHandler((server) => {
     },
     safe(async ({ scriptId, functionName, parameters }) => {
       const script = await getScriptClient();
-      const res = await script.scripts.run({
-        scriptId,
-        requestBody: {
-          function: functionName,
-          parameters: parameters ?? [],
-          devMode: true,
-        },
-      });
+      const res = await comTimeout(
+        script.scripts.run({
+          scriptId,
+          requestBody: {
+            function: functionName,
+            parameters: parameters ?? [],
+            devMode: true,
+          },
+        }),
+        TIMEOUT_SCRIPT_RUN_MS,
+        `A função "${functionName}"`
+      );
       if (res.data.error) {
         return { content: [{ type: "text", text: `Erro na execução: ${JSON.stringify(res.data.error)}` }] };
       }
@@ -162,19 +203,27 @@ const baseHandler = createMcpHandler((server) => {
     { scriptId: z.string() },
     safe(async ({ scriptId }) => {
       const script = await getScriptClient();
-      const version = await script.projects.versions.create({
-        scriptId,
-        requestBody: { description: "Deploy automático via MCP" },
-      });
+      const version = await comTimeout(
+        script.projects.versions.create({
+          scriptId,
+          requestBody: { description: "Deploy automático via MCP" },
+        }),
+        TIMEOUT_SCRIPT_META_MS,
+        "A criação da versão"
+      );
       const versionNumber = version.data.versionNumber;
-      const deployment = await script.projects.deployments.create({
-        scriptId,
-        requestBody: {
-          versionNumber,
-          manifestFileName: "appsscript",
-          description: "API Executable via MCP",
-        },
-      });
+      const deployment = await comTimeout(
+        script.projects.deployments.create({
+          scriptId,
+          requestBody: {
+            versionNumber,
+            manifestFileName: "appsscript",
+            description: "API Executable via MCP",
+          },
+        }),
+        TIMEOUT_SCRIPT_META_MS,
+        "A criação do deployment"
+      );
       return {
         content: [
           {
